@@ -1,0 +1,205 @@
+#Verison IPython Notebook: 3.3
+#Bibliotecas
+from scipy.integrate import *
+from scipy.optimize import *
+from pylab import *
+from math import *
+import matplotlib.pyplot as plt
+#Parâmetros
+#Constantes do cálculo do reator/trocador
+#Cp's em J/molK
+cp1 = 116.18      #Calor específico da A (j/molK) ÁCIDO ACÉTICO
+cp2 = 87.36       #Calor específico da B (j/molK) BICARBONATO
+cp3 = 75.34       #Calor específico da C (j/molK) ÁGUA
+cp4 = 36.92       #Calor específico da D (j/molK) CO2
+cp5 = 67.81       #Calor específico da E (j/mol*K) ACETATO
+#Cp's em J/kgK
+Cp1 = 4186                   #ÁGUA (J/kgK)
+Cp2 = 826.95                 #ACETATO (J/kgK)
+Cw = 0.97*Cp1 + 0.03*Cp2  #Calor específico da solução em J/kgK
+
+#Vazões (molar, mássica), concentrações
+Va = 0.35*(10**-3)     #Vazão da água no anulo (m3/s) 
+Vt = 3*(10**-6)        #Vazão da água no tubo (m3/s) 
+Ca0 = 870              #Concentração de entrada do componente A (mol/m3)
+Fa0 = Ca0*Vt           #Vazão molar do componente A (mol A/s)
+Mc = Vt*1000           #Vazão da água no tubo interno, kg/s
+Ma = Va*1000           #Vazão da água no ânulo, kg/s
+
+# Parâmetros da reação
+DH = 47161          #Entalpia de formação(J/mol)
+R = 8.314           #Constante dos gases (J/molK)
+Ef = 18129.12       #Energia de ativação (J/mol)
+k1 = 27.2           #Constade de velocidade de reação (mol/s*m3) a 280K
+
+#Diâmetros e áreas
+DI = 0.007              #Diametro interno do tubo interno, m
+DE = 0.009              #D externo do tubo interno, m
+Do = 0.04               #Diâmetro do anulo (m)
+pi = 3.1415
+P = pi*DE               #Perímetro do tudo interno com diâmetro externo, m
+Deq = Do - DE           #Diâmetro equivalente do anulo para cálculo da queda de pressão, m
+De = (Do**2 - DE**2)/DE #Diâmetro equivalente do anulo para cálculo do U, m
+L2 = 1                  #comprimento do tubo (m)
+
+#Áreas e vazões
+Ai = (pi*DI**2) / 4              #Área interna do tubo interno, m2
+Aa = (3.1415*(Do**2 - DE**2))/4  #Área do anulo para cálculo da vazão mássica (queda de pressão e U), m
+g = 9.81                         #m/s2
+
+#Propriedades
+mi35 = 2*0.00075 #Viscosidade da solucao em 35°C (kg/m.s)
+mi80 = 0.00036   #Viscosidade da agua em 80°C (kg/ms)
+k5 = 0.8*0.62    #Condutividade da solucao em 35(°C) 
+k3 = 0.687       #Condutividade da agua em 80(°C)
+d_ag = 1000      #Densidade da água, kg/m3
+
+#Temperaturas de entrada e saída
+T1 = 363 #90°C
+T2 = 343 #70°C
+t1 = 273 #0°C
+t2 = 343 #70°C
+
+tm = 35 #temperatura media da solução fria (°C)
+Tm = 80 #temperatura media da agua (°C)
+
+print (Ef)
+#Cálculo do U
+#Cálculo do hio - tubo interno
+Gt = Mc/Ai # fluxo massico no tubo (kg/m2.s)
+Ret = (Gt * DI) / mi35 # numero de Reynolds no tubo
+hi = (1.86 * k5/DI) * ((Ret*(Cw*mi35/k5)*(DI/L2))**(0.33)) #siede tate laminar
+hio = hi * (DI/DE) #corrigido 
+
+#Cálculo do ho - ânulo
+Gs = Ma/Aa # fluxo massico no ânulo (kg/m2.s)
+Res = (Gs * De)/mi80 # numero de Reynolds no ânulo
+ho = (0.027*k3/De) * ((Res)**(0.8)) * ((Cp1*mi80/k3)**(0.33)) #siede tate turbulento
+
+#Cálculo do U
+U = (hio * ho) / (hio + ho)
+
+print (U)
+#Cálculo da queda de pressão
+#Tubo interno
+
+Ret = (DI*Gt)/mi35
+
+if Ret <= 2300:
+            
+        f = 16/Ret
+        Pp = (4*f*(Gt**2)*L2) / (d_ag*DI)
+        Ppsi = Pp*0.00014503
+           
+else:
+        
+        f = 0.0035 + 0.264/(Ret**0.42)
+        Pp = (4*f*(Gt**2)*L2) /(d_ag*DI)
+        Ppsi= Pp*0.00014503
+
+#Ânulo
+
+Rea = (Deq*Gs)/mi80
+
+if Rea > 2300:
+    
+        f = 0.0035 + 0.264/(Rea**0.42)
+        Fa = (4 * f * Gs**2 *L2) / (d_ag * Deq)
+        V = Gs/d_ag
+        Fpi = (d_ag* V**2) / 2
+        Pat = (Fa + Fpi)*0.00014503
+
+else:
+        f = 16 / Rea
+        Fa = (4 * f * (Gs**2) * L2) / (d_ag * Deq)
+        V = Gs/d_ag
+        Fpi = (d_ag* V**2) / 2
+        Pat = (Fa + Fpi)*0.00014503
+        
+print (Pat)  #ÂNULO em psi
+print (Ppsi) #TUBO em psi
+#Balanços de massa e energia
+def rA(T):
+    veloc_reac = k1*exp((2180.5)*((1/280)-(1/T)))
+    return veloc_reac
+
+def deltaH(T):
+    DeltaH = 47161 + (0.435*cp1 + 0.435*cp2)*(298 - 273) + (0.435*cp3 + 0.435*cp4 + 0.435*cp5)*(T - 298)
+    return DeltaH
+  
+  ##usando odeint
+#Equações Diferenciais
+
+def Deriv(y,l):
+     
+    X = y[0]
+    Ta = y[1]
+    T = y[2]
+    Ca = y[3]
+                
+    if X <=1 and Ca >=0:
+    
+        dXdl = ( Ai / Fa0 )* rA(T) 
+       
+        dTadl =  (U * P)*(T - Ta) / (Ma*Cp1)
+
+        dTdl = ( U * P * (Ta - T) - rA(T) * Ai * deltaH(T))/(Cw*Mc) 
+    
+        dCadl = -Ca0*dXdl
+       
+    else:
+    
+        dXdl = 0 
+       
+        dTadl =  (U * P)*(T - Ta) / (Ma*Cp1)
+
+        dTdl = ( U * P * (Ta - T) )/(Cw*Mc) 
+    
+        dCadl = 0
+    
+    return [dXdl , dTadl , dTdl, dCadl]
+    
+#Condições iniciais
+X0 = 0
+Ta0 = 363
+T0 = 273 
+Ca0 = 870
+
+#Vetor comprimento
+l = linspace(0, 2, 1000)  
+l1 = linspace(2, 0, 1000) 
+
+#odeint
+f0 = [X0, Ta0, T0, Ca0]
+
+fs = odeint(Deriv, f0 , l)
+
+Xs = fs[:, 0]
+Tas = fs[:, 1]
+Ts = fs[:, 2]
+Cs = fs[:, 3]
+print (Xs)
+print (Tas)
+print (Ts)
+print (Cs)
+
+#Gráficos
+plt.figure()
+plt.plot(l, Xs, label=u'Conversão do reator',color='green')
+plt.xlabel('L [m]')
+plt.ylabel(u'Conversão')
+plt.legend(loc=4)
+
+plt.figure()
+plt.plot(l, Ts, label='Temperatura do reator',color='blue')
+plt.plot(l1, Tas, label='Temperatura da camisa',color='red')
+plt.title("Temperaturas")
+plt.xlabel('L (m)')
+plt.ylabel('(K)')
+plt.legend(loc=4)
+
+plt.figure()
+plt.plot(l,Cs, label='Concentração de Ca',color='purple')
+plt.xlabel('L (m)')
+plt.ylabel('Concentração de Ca [mol/m³]')
+plt.legend(loc=3)
